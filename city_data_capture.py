@@ -157,13 +157,16 @@ def city_data_capture(driver, city_list):
 
     return city_data
 
+def main():
+    # WebDriver 실행
+    driver = create_driver()
 
-# WebDriver 실행
-driver = create_driver()
+    # 크롤링 후 JSON 파일로 저장
+    with open('location_data.json', 'w', encoding='utf-8') as f:
+        json.dump(city_data_capture(driver, city_list), f, ensure_ascii=False, indent=4)
 
-# 크롤링 후 JSON 파일로 저장
-with open('location_data.json', 'w', encoding='utf-8') as f:
-    json.dump(city_data_capture(driver, city_list), f, ensure_ascii=False, indent=4)
+    # WebDriver 종료
+    driver.quit()
 
-# WebDriver 종료
-driver.quit()
+if __name__ == "__main__":
+    main()

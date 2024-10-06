@@ -193,7 +193,7 @@ def main():
     # WebDriver 실행
     driver = create_driver()
 
-    molit_capture(driver, "2024")
+    for y in range(2014,2024):molit_capture(driver, f"{y}")
 
     # WebDriver 종료
     driver.quit()

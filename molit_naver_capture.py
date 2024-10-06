@@ -75,6 +75,12 @@ def create_driver():
 knu = {"강원특별자치도" : {"춘천시" : ["효자동", "후평동", "석사동", "퇴계동"]}}
 
 def molit_capture(driver, year):
+    # CSV 파일을 저장할 디렉토리 경로 설정
+    directory = 'molit_data'
+
+    # 디렉토리가 존재하지 않으면 생성
+    if not os.path.exists(directory):os.makedirs(directory)
+
     # 국토교통부 실거래가 - 단독/다가구 건물 데이터 url 접속
     driver.get("https://rt.molit.go.kr/pt/gis/gis.do?srhThingSecd=C&mobileAt=")
     driver.implicitly_wait(5);time.sleep(1)
@@ -118,40 +124,60 @@ def molit_capture(driver, year):
         # 돋보기 버튼 클릭
         WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.XPATH, f'/html/body/div/section/div[1]/div[2]/div[1]/div[1]/ul/li[5]/div'))
-        ).click();time.sleep(0.1)
+        ).click();time.sleep(2)
 
         # 전월세 버튼 클릭 
         WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.XPATH, f'/html/body/div/section/div[1]/div[2]/div[2]/div[1]/div[2]/div[1]/button[2]'))
-        ).click();time.sleep(0.1)
+        ).click();time.sleep(2)
 
-        # 데이터 받아오기
-        raw_data = WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located((By.XPATH, "/html/body/div/section/div[1]/div[2]/div[2]/div[3]/div"))
-        );time.sleep(5)
-        raw_content = raw_data.get_attribute('outerHTML')
-        soup = BeautifulSoup(raw_content, 'lxml')
-        rows = soup.find_all('tr')
-        table_data = []
-        row_buffer = None
-        for row in rows:
-            cols = row.find_all('td')
-            cols = [col.text.strip() for col in cols]
-            if len(cols) == 9:
-                row_buffer = cols
-            elif len(cols) == 5:
-                complete_row = [
-                    row_buffer[0], row_buffer[1], cols[0], row_buffer[2], row_buffer[3], cols[1], row_buffer[4], 
-                    row_buffer[5], cols[2], row_buffer[6], cols[3], row_buffer[7], cols[4], row_buffer[8]]
-                table_data.append(complete_row)
-                row_buffer = None
+        # 면적에서 '60제곱미터 이하' 선택
+        area_element = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.XPATH, '/html/body/div/section/div[1]/div[2]/div[2]/div[2]/table/tbody/tr[2]/td[4]/div/select'))
+        );time.sleep(0.1)
+        Select(area_element).select_by_visible_text('60제곱미터 이하');time.sleep(2)
 
-        df = pd.DataFrame(table_data, columns=[
-            '법정동', '지번', '도로명', '주택유형', '연면적(㎡)', '계약구분', '계약일', 
-            '계약기간', '갱신요구권사용', '보증금(만원)', '월세(만원)', '종전보증금(만원)', '종전월세(만원)', '전산공부'])
+        # 해당 연도에서 면적이 '60제곱미터 이하'인 데이터가 들어있는 달 구하기
+        month_element = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.XPATH, '/html/body/div/section/div[1]/div[2]/div[2]/div[2]/table/tbody/tr[2]/td[3]/div/select'))
+        );time.sleep(2)
+        month_select = Select(month_element)
+        month_all_options = month_select.options
+        month_list = [month_option.text for month_option in month_all_options if month_option.text != '전체']
 
-        df.to_csv('real_estate_data.csv', index=False)  # CSV로 저장
-        break
+        for month in month_list:
+            month_element = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.XPATH, '/html/body/div/section/div[1]/div[2]/div[2]/div[2]/table/tbody/tr[2]/td[3]/div/select'))
+            );time.sleep(0.1)
+            Select(month_element).select_by_visible_text(month);time.sleep(2)
+
+            raw_data = WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located((By.XPATH, "/html/body/div/section/div[1]/div[2]/div[2]/div[3]/div"))
+            );time.sleep(2)
+            raw_content = raw_data.get_attribute('outerHTML')
+            soup = BeautifulSoup(raw_content, 'lxml')
+            rows = soup.find_all('tr')
+            table_data = []
+            row_buffer = None
+            for row in rows:
+                cols = row.find_all('td')
+                cols = [col.text.strip() for col in cols]
+                if len(cols) == 9:
+                    row_buffer = cols
+                elif len(cols) == 5:
+                    complete_row = [
+                        row_buffer[0], row_buffer[1], cols[0], row_buffer[2], row_buffer[3], cols[1], month+'/'+row_buffer[4], 
+                        row_buffer[5], cols[2], row_buffer[6], cols[3], row_buffer[7], cols[4], row_buffer[8]]
+                    table_data.append(complete_row)
+                    row_buffer = None
+
+            df = pd.DataFrame(table_data, columns=[
+                '법정동', '지번', '도로명', '주택유형', '연면적(㎡)', '계약구분', '계약일', 
+                '계약기간', '갱신요구권사용', '보증금(만원)', '월세(만원)', '종전보증금(만원)', '종전월세(만원)', '전산공부'])
+
+            file_path = os.path.join(directory, f'{year}-{month}-{knu_village}.csv')
+            df.to_csv(file_path, index=False)
+            print(f'파일이 {file_path}에 저장되었습니다.')
 
         # 닫기 버튼 클릭 
         WebDriverWait(driver, 5).until(
@@ -167,7 +193,7 @@ def main():
     # WebDriver 실행
     driver = create_driver()
 
-    molit_capture(driver, "2023")
+    molit_capture(driver, "2024")
 
     # WebDriver 종료
     driver.quit()

@@ -72,13 +72,9 @@ def create_driver():
     driver.set_window_position(0, 0)
     return driver
 
-knu_villages = {"효자동":f'/html/body/div[2]/div/section/div[2]/div[2]/div[1]/div/div/div/div[2]/ul/li[38]', 
-       "후평동":f'/html/body/div[2]/div/section/div[2]/div[2]/div[1]/div/div/div/div[2]/ul/li[39]', 
-       "석사동":f'/html/body/div[2]/div/section/div[2]/div[2]/div[1]/div/div/div/div[2]/ul/li[15]', 
-       "퇴계동":f'/html/body/div[2]/div/section/div[2]/div[2]/div[1]/div/div/div/div[2]/ul/li[37]'
-}
+knu_villages = {"효자동":f'area37', "후평동":f'area38', "석사동":f'area14', "퇴계동":f'area36'}
 
-def molit_capture(driver, year):
+def naver_capture(driver):
     # CSV 파일을 저장할 디렉토리 경로 설정
     directory = 'naver_data'
 
@@ -88,9 +84,10 @@ def molit_capture(driver, year):
     # 네이버부동산 - 원룸 투룸 매물 url 접속
     driver.get("https://new.land.naver.com/rooms?ms=37.3595704,127.105399,16&a=APT:OPST:ABYG:OBYG:GM:OR:VL:DDDGG:JWJT:SGJT:HOJT&e=RETAIL&aa=SMALLSPCRENT")
     driver.implicitly_wait(5);time.sleep(1)
+    driver.execute_script("document.body.style.zoom='75%'")
 
     # 동일매물 묶기
-    checkbox = driver.find_element(By.ID, f'address_group2')
+    checkbox = driver.find_element(By.XPATH, f'/html/body/div[2]/div/section/div[2]/div[1]/div/div[2]/div/div[1]/div/div/label')
     if not checkbox.is_selected() : checkbox.click();time.sleep(0.5)
 
     # 주소 선택 팝업 클릭
@@ -109,15 +106,30 @@ def molit_capture(driver, year):
     ).click();time.sleep(0.5)
 
     # 읍면동명 선택 (효자동, 후평동, 석사동, 퇴계동)
-    for knu_village_name, knu_village_xpath in knu_villages:
-        WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.XPATH, knu_village_xpath))).click()
-        time.sleep(0.5)
+    for knu_village_name, knu_village_id in knu_villages.items():
+        # 읍면동명 선택 (순서대로)
+        radio_button = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.ID, knu_village_id)))
+        driver.execute_script("arguments[0].click();", radio_button);time.sleep(0.5)
+
+        # 매물 아이템리스트 업데이트를 위해 끝까지 스크롤
+        last_height = driver.execute_script("return document.querySelector('.item_list').scrollHeight")
+        while True :
+            driver.execute_script(f"document.querySelector('.item_list').scrollBy(0, {last_height});");time.sleep(0.5)
+            new_height = driver.execute_script("return document.querySelector('.item_list').scrollHeight")
+            print(f'last_height : {last_height}\tnew_height : {new_height}')
+            if new_height == last_height : break
+            last_height = new_height
+
+        # 다음 읍면동명 선택을 위해 팝업 선택
+        WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.XPATH, f'/html/body/div[2]/div/section/div[2]/div[2]/div[1]/div/div/a/span[3]'))
+        ).click();time.sleep(0.5)
 
 def main():
     # WebDriver 실행
     driver = create_driver()
 
-    for y in range(2014,2024):molit_capture(driver, f"{y}")
+    naver_capture(driver)
 
     # WebDriver 종료
     driver.quit()

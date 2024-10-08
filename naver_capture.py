@@ -8,6 +8,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import pandas as pd
+from datetime import datetime
 import subprocess
 import platform
 import shutil
@@ -74,6 +75,43 @@ def create_driver():
 
 knu_villages = {"효자동":f'area37', "후평동":f'area38', "석사동":f'area14', "퇴계동":f'area36'}
 
+def extract_real_estate_data(raw_data, data=[]):
+    # BeautifulSoup을 사용해 매물 정보 HTML 파싱
+    raw_content = raw_data.get_attribute('outerHTML')
+    soup = BeautifulSoup(raw_content, 'html.parser')
+
+    # 매물 정보가 포함된 모든 'item' 클래스 요소를 찾음
+    items = soup.find_all('div', class_='item')
+
+    # 각 매물 정보를 반복하며 데이터 추출
+    for item in items:
+        try:
+            # 매물 유형, 제목, 가격 정보, 면적, 층수, 방향, 태그 및 기타 정보 추출
+            property_type = item.find('strong', class_='type').get_text(strip=True) if item.find('strong', class_='type') else None
+            title = item.find('span', class_='text').get_text(strip=True) if item.find('span', class_='text') else None
+            price = item.find('div', class_='price_line').get_text(strip=True).replace('월세', '').strip() if item.find('div', class_='price_line') else None
+            area = item.find('span', class_='spec').get_text(strip=True) if item.find('span', class_='spec') else None
+            direction = area.split(', ')[-1] if area else None
+            floors = area.split(', ')[1] if area else None
+            tags = ', '.join([tag.get_text(strip=True) for tag in item.find_all('span', class_='tag')])
+            confirmed_date = item.find('span', class_='data').get_text(strip=True) if item.find('span', class_='data') else None
+            platform = item.find('a', class_='agent_name').get_text(strip=True) if item.find('a', class_='agent_name') else None
+            transaction_type = "직거래" if "직거래" in platform else "중개 거래"
+            image_url = item.find('div', class_='thumbnail')['style'].split('url("')[1].split('");')[0] if item.find('div', class_='thumbnail') else None
+
+            # 매물 정보를 리스트에 추가 (매물 유형, 매물 제목, 보증금/월세, 면적, 층수, 방향, 특징, 태그, 거래 방식, 중개 플랫폼, 확인 날짜, 이미지 URL)
+            data.append([
+                property_type, title, price, 
+                area.split(', ')[0] if area else None, floors, direction,
+                "관리비 포함, 즉시 입주 가능" if "관리비" in item.find('p', class_='line').get_text(strip=True) else None,
+                tags, transaction_type, platform, confirmed_date, image_url
+            ])
+        except Exception as e:
+            print(f"데이터 추출 중 오류 발생: {e}")
+            continue
+
+    return data
+
 def naver_capture(driver):
     # CSV 파일을 저장할 디렉토리 경로 설정
     directory = 'naver_data'
@@ -109,16 +147,74 @@ def naver_capture(driver):
     for knu_village_name, knu_village_id in knu_villages.items():
         # 읍면동명 선택 (순서대로)
         radio_button = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.ID, knu_village_id)))
-        driver.execute_script("arguments[0].click();", radio_button);time.sleep(0.5)
+        driver.execute_script("arguments[0].click();", radio_button)
+        time.sleep(0.5)
 
-        # 매물 아이템리스트 업데이트를 위해 끝까지 스크롤
+        # 매물 아이템 리스트 업데이트를 위해 끝까지 스크롤
         last_height = driver.execute_script("return document.querySelector('.item_list').scrollHeight")
         while True :
             driver.execute_script(f"document.querySelector('.item_list').scrollBy(0, {last_height});");time.sleep(0.5)
             new_height = driver.execute_script("return document.querySelector('.item_list').scrollHeight")
-            print(f'last_height : {last_height}\tnew_height : {new_height}')
             if new_height == last_height : break
             last_height = new_height
+
+        time.sleep(1)
+        driver.execute_script(f"document.querySelector('.item_list').scrollTo(0, 0);");time.sleep(1)
+
+        # 매물 데이터 추출
+        naver_data = []
+        item_index = 1
+        
+        while True:
+            try:
+                item_list_raw_data = WebDriverWait(driver, 30).until(
+                    EC.presence_of_element_located((By.XPATH, f"/html/body/div[2]/div/section/div[2]/div[1]/div/div[2]/div/div[2]/div/div/div/div[{item_index}]"))
+                );time.sleep(0.5)
+            
+                # 매물 데이터 추출 및 리스트에 추가
+                extract_real_estate_data(item_list_raw_data,naver_data)
+                time.sleep(2)
+
+                # 네이버에서 보기 버튼이 있다면 버튼 클릭
+                try:
+                    WebDriverWait(driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, f'//*[@id="listContents1"]/div/div/div/div[{item_index}]/div/div[2]/a'))
+                    ).click()
+                # 없다면 매물 박스 클릭
+                except:
+                    try:
+                        WebDriverWait(driver, 5).until(
+                            EC.element_to_be_clickable((By.XPATH, f'//*[@id="listContents1"]/div/div/div/div[{item_index}]'))
+                        ).click()
+                    except:
+                        WebDriverWait(driver, 5).until(
+                            EC.element_to_be_clickable((By.XPATH, f'//*[@id="listContents1"]/div/div/div/div[{item_index}]/div[2]/div[2]'))
+                        ).click()
+
+                # 소재지 정보 가지고 오기
+                adress = WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.XPATH, f'//*[@id="detailContents1"]/div[1]/table/tbody/tr[1]/td'))
+                ).text
+                if "춘천시" in adress : naver_data[item_index-1].insert(2,adress)
+                else : naver_data[item_index-1].insert(2,'')
+
+                print(f"{knu_village_name} - item_list_{item_index} 데이터 추출 완료")
+                
+                item_index += 1
+
+                driver.execute_script(f"document.querySelector('.item_list').scrollBy(0, 175);");time.sleep(0.5)
+            
+            except : break
+
+        df = pd.DataFrame(naver_data, columns=[
+            '매물 유형', '매물 제목', '소재지', '보증금/월세', '면적', '층수', '방향', 
+            '특징', '태그', '거래 방식', '중개 플랫폼', '확인 날짜', '이미지 URL'])
+        
+        now = datetime.now()
+        formatted_date_time = now.strftime("%Y-%m-%d-%H:%M")
+        file_path = os.path.join(directory, f'{formatted_date_time}-{knu_village_name}.csv')
+        df.to_csv(file_path, index=False)
+        print(f'파일이 {file_path}에 저장되었습니다.')
 
         # 다음 읍면동명 선택을 위해 팝업 선택
         WebDriverWait(driver, 5).until(

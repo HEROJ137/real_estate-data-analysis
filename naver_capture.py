@@ -89,22 +89,22 @@ def extract_real_estate_data(raw_data, data=[]):
             # 매물 유형, 제목, 가격 정보, 면적, 층수, 방향, 태그 및 기타 정보 추출
             property_type = item.find('strong', class_='type').get_text(strip=True) if item.find('strong', class_='type') else None
             title = item.find('span', class_='text').get_text(strip=True) if item.find('span', class_='text') else None
-            price = item.find('div', class_='price_line').get_text(strip=True).replace('월세', '').strip() if item.find('div', class_='price_line') else None
+            price = item.find('div', class_='price_line').get_text(strip=True) if item.find('div', class_='price_line') else None
             area = item.find('span', class_='spec').get_text(strip=True) if item.find('span', class_='spec') else None
             direction = area.split(', ')[-1] if area else None
             floors = area.split(', ')[1] if area else None
             tags = ', '.join([tag.get_text(strip=True) for tag in item.find_all('span', class_='tag')])
             confirmed_date = item.find('span', class_='data').get_text(strip=True) if item.find('span', class_='data') else None
-            platform = item.find('a', class_='agent_name').get_text(strip=True) if item.find('a', class_='agent_name') else None
-            transaction_type = "직거래" if "직거래" in platform else "중개 거래"
-            image_url = item.find('div', class_='thumbnail')['style'].split('url("')[1].split('");')[0] if item.find('div', class_='thumbnail') else None
+            agent_info = item.find_all('a', class_='agent_name')
+            agent_platform = agent_info[0].get_text(strip=True) if len(agent_info) > 0 else None
+            agent = agent_info[1].get_text(strip=True) if len(agent_info) > 1 else None
+            transaction_type = "중개 거래"
 
-            # 매물 정보를 리스트에 추가 (매물 유형, 매물 제목, 보증금/월세, 면적, 층수, 방향, 특징, 태그, 거래 방식, 중개 플랫폼, 확인 날짜, 이미지 URL)
+            # 매물 정보를 리스트에 추가 (매물 유형, 매물 제목, 보증금/월세, 면적, 층수, 방향, 태그, 거래 방식, 중개 플랫폼, 중개사, 등록일)
             data.append([
                 property_type, title, price, 
                 area.split(', ')[0] if area else None, floors, direction,
-                "관리비 포함, 즉시 입주 가능" if "관리비" in item.find('p', class_='line').get_text(strip=True) else None,
-                tags, transaction_type, platform, confirmed_date, image_url
+                tags, transaction_type, agent_platform, agent, confirmed_date
             ])
         except Exception as e:
             print(f"데이터 추출 중 오류 발생: {e}")
@@ -123,10 +123,6 @@ def naver_capture(driver):
     driver.get("https://new.land.naver.com/rooms?ms=37.3595704,127.105399,16&a=APT:OPST:ABYG:OBYG:GM:OR:VL:DDDGG:JWJT:SGJT:HOJT&e=RETAIL&aa=SMALLSPCRENT")
     driver.implicitly_wait(5);time.sleep(1)
     driver.execute_script("document.body.style.zoom='75%'")
-
-    # 동일매물 묶기
-    checkbox = driver.find_element(By.XPATH, f'/html/body/div[2]/div/section/div[2]/div[1]/div/div[2]/div/div[1]/div/div/label')
-    if not checkbox.is_selected() : checkbox.click();time.sleep(0.5)
 
     # 주소 선택 팝업 클릭
     WebDriverWait(driver, 5).until(
@@ -161,60 +157,83 @@ def naver_capture(driver):
         time.sleep(1)
         driver.execute_script(f"document.querySelector('.item_list').scrollTo(0, 0);");time.sleep(1)
 
-        # 매물 데이터 추출
-        naver_data = []
-        item_index = 1
-        
-        while True:
-            try:
-                item_list_raw_data = WebDriverWait(driver, 30).until(
-                    EC.presence_of_element_located((By.XPATH, f"/html/body/div[2]/div/section/div[2]/div[1]/div/div[2]/div/div[2]/div/div/div/div[{item_index}]"))
-                );time.sleep(0.5)
+        def select_action(naver_data, item_index, delay = 0.5):
+            item_list_raw_data = WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located((By.XPATH, f"/html/body/div[2]/div/section/div[2]/div[1]/div/div[2]/div/div[2]/div/div/div/div[{item_index}]"))
+            );time.sleep(0.5)
             
+            if "공인중개사협회매물" not in item_list_raw_data.text :
                 # 매물 데이터 추출 및 리스트에 추가
-                extract_real_estate_data(item_list_raw_data,naver_data)
-                time.sleep(2)
+                extract_real_estate_data(item_list_raw_data, naver_data)
 
                 # 네이버에서 보기 버튼이 있다면 버튼 클릭
                 try:
                     WebDriverWait(driver, 5).until(
                         EC.element_to_be_clickable((By.XPATH, f'//*[@id="listContents1"]/div/div/div/div[{item_index}]/div/div[2]/a'))
-                    ).click()
+                    ).click();time.sleep(delay)
                 # 없다면 매물 박스 클릭
                 except:
-                    try:
-                        WebDriverWait(driver, 5).until(
-                            EC.element_to_be_clickable((By.XPATH, f'//*[@id="listContents1"]/div/div/div/div[{item_index}]'))
-                        ).click()
-                    except:
-                        WebDriverWait(driver, 5).until(
-                            EC.element_to_be_clickable((By.XPATH, f'//*[@id="listContents1"]/div/div/div/div[{item_index}]/div[2]/div[2]'))
-                        ).click()
+                    WebDriverWait(driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, f'//*[@id="listContents1"]/div/div/div/div[{item_index}]'))
+                    ).click();time.sleep(delay)
 
                 # 소재지 정보 가지고 오기
-                adress = WebDriverWait(driver, 5).until(
-                    EC.presence_of_element_located((By.XPATH, f'//*[@id="detailContents1"]/div[1]/table/tbody/tr[1]/td'))
-                ).text
-                if "춘천시" in adress : naver_data[item_index-1].insert(2,adress)
-                else : naver_data[item_index-1].insert(2,'')
+                try:
+                    adress = WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located((By.XPATH, f'//*[@id="detailContents1"]/div[1]/table/tbody/tr[1]/td'))
+                    ).text
+                    if "춘천시" in adress:
+                        print(f"{knu_village_name} - item_list_{item_index} 소재지 추가 : {adress}")
+                        naver_data[item_index-1].insert(2,adress)
+                    else:
+                        print(f"{knu_village_name} - item_list_{item_index} 소재지 없음 : None")
+                        naver_data[item_index-1].insert(2,'')
+                except:
+                    print(f"{knu_village_name} - item_list_{item_index} 소재지 없음 : None")
+                    naver_data[item_index-1].insert(2,'')
 
-                print(f"{knu_village_name} - item_list_{item_index} 데이터 추출 완료")
-                
-                item_index += 1
+                print(f"  > 데이터 추출 완료")
 
                 driver.execute_script(f"document.querySelector('.item_list').scrollBy(0, 175);");time.sleep(0.5)
+
+                return True
             
-            except : break
+            else : 
+                driver.execute_script(f"document.querySelector('.item_list').scrollBy(0, 225);");time.sleep(0.5)
+                print(f"{knu_village_name} - item_list_{item_index}\n{item_list_raw_data.text}")
+
+                return False
+
+        # 매물 데이터 추출
+        naver_data = []
+        item_index = 2
+
+        select_action(naver_data, 1, delay = 3)
+        
+        while True:
+            time.sleep(0.5)
+            
+            try: 
+                select_action(naver_data, item_index)
+                item_index += 1
+            except: 
+                break
 
         df = pd.DataFrame(naver_data, columns=[
-            '매물 유형', '매물 제목', '소재지', '보증금/월세', '면적', '층수', '방향', 
-            '특징', '태그', '거래 방식', '중개 플랫폼', '확인 날짜', '이미지 URL'])
+            '매물 유형', '매물 제목', '소재지', '가격', '면적', '층수', '방향', 
+            '태그', '거래 방식', '중개 플랫폼', '중개사', '등록일'])
         
         now = datetime.now()
         formatted_date_time = now.strftime("%Y-%m-%d-%H:%M")
         file_path = os.path.join(directory, f'{formatted_date_time}-{knu_village_name}.csv')
         df.to_csv(file_path, index=False)
         print(f'파일이 {file_path}에 저장되었습니다.')
+        time.sleep(0.5)
+
+        # 세부 데이터 팝업 종료 버튼 클릭
+        WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.XPATH, f'/html/body/div[2]/div/section/div[2]/div[2]/div/button'))
+        ).click();time.sleep(0.5)
 
         # 다음 읍면동명 선택을 위해 팝업 선택
         WebDriverWait(driver, 5).until(

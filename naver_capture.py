@@ -75,7 +75,7 @@ def create_driver():
 
 knu_villages = {"효자동":f'area37', "후평동":f'area38', "석사동":f'area14', "퇴계동":f'area36'}
 
-def extract_real_estate_data(raw_data, data=[]):
+def extract_real_estate_data(raw_data, adress, data):
     # BeautifulSoup을 사용해 매물 정보 HTML 파싱
     raw_content = raw_data.get_attribute('outerHTML')
     soup = BeautifulSoup(raw_content, 'html.parser')
@@ -89,6 +89,7 @@ def extract_real_estate_data(raw_data, data=[]):
             # 매물 유형, 제목, 가격 정보, 면적, 층수, 방향, 태그 및 기타 정보 추출
             property_type = item.find('strong', class_='type').get_text(strip=True) if item.find('strong', class_='type') else None
             title = item.find('span', class_='text').get_text(strip=True) if item.find('span', class_='text') else None
+            adress_info = adress
             price = item.find('div', class_='price_line').get_text(strip=True) if item.find('div', class_='price_line') else None
             area = item.find('span', class_='spec').get_text(strip=True) if item.find('span', class_='spec') else None
             direction = area.split(', ')[-1] if area else None
@@ -98,13 +99,12 @@ def extract_real_estate_data(raw_data, data=[]):
             agent_info = item.find_all('a', class_='agent_name')
             agent_platform = agent_info[0].get_text(strip=True) if len(agent_info) > 0 else None
             agent = agent_info[1].get_text(strip=True) if len(agent_info) > 1 else None
-            transaction_type = "중개 거래"
 
-            # 매물 정보를 리스트에 추가 (매물 유형, 매물 제목, 보증금/월세, 면적, 층수, 방향, 태그, 거래 방식, 중개 플랫폼, 중개사, 등록일)
+            # 매물 정보를 리스트에 추가 (매물 유형, 매물 제목, 보증금/월세, 면적, 층수, 방향, 태그, 중개 플랫폼, 중개사, 등록일)
             data.append([
-                property_type, title, price, 
+                property_type, title, adress_info, price, 
                 area.split(', ')[0] if area else None, floors, direction,
-                tags, transaction_type, agent_platform, agent, confirmed_date
+                tags, agent_platform, agent, confirmed_date
             ])
         except Exception as e:
             print(f"데이터 추출 중 오류 발생: {e}")
@@ -163,9 +163,6 @@ def naver_capture(driver):
             );time.sleep(0.5)
             
             if "공인중개사협회매물" not in item_list_raw_data.text :
-                # 매물 데이터 추출 및 리스트에 추가
-                extract_real_estate_data(item_list_raw_data, naver_data)
-
                 # 네이버에서 보기 버튼이 있다면 버튼 클릭
                 try:
                     WebDriverWait(driver, 5).until(
@@ -178,31 +175,25 @@ def naver_capture(driver):
                     ).click();time.sleep(delay)
 
                 # 소재지 정보 가지고 오기
-                try:
-                    adress = WebDriverWait(driver, 5).until(
-                        EC.presence_of_element_located((By.XPATH, f'//*[@id="detailContents1"]/div[1]/table/tbody/tr[1]/td'))
-                    ).text
-                    if "춘천시" in adress:
-                        print(f"{knu_village_name} - item_list_{item_index} 소재지 추가 : {adress}")
-                        naver_data[item_index-1].insert(2,adress)
-                    else:
-                        print(f"{knu_village_name} - item_list_{item_index} 소재지 없음 : None")
-                        naver_data[item_index-1].insert(2,'')
-                except:
-                    print(f"{knu_village_name} - item_list_{item_index} 소재지 없음 : None")
-                    naver_data[item_index-1].insert(2,'')
+                adress = WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.XPATH, f'//*[@id="detailContents1"]/div[1]/table/tbody/tr[1]/td'))
+                ).text
 
-                print(f"  > 데이터 추출 완료")
+                # 매물 데이터 추출 및 리스트에 추가
+                if "춘천시" in adress : 
+                    print(f"{knu_village_name} - item_list_{item_index} 소재지 추가 : {adress}")
+                    extract_real_estate_data(item_list_raw_data, adress, naver_data)
+                else : 
+                    print(f"{knu_village_name} - item_list_{item_index} 소재지 없음 : None")
+                    extract_real_estate_data(item_list_raw_data, None, naver_data)
+
+                print(f" > 데이터 추출 완료")
 
                 driver.execute_script(f"document.querySelector('.item_list').scrollBy(0, 175);");time.sleep(0.5)
-
-                return True
             
             else : 
                 driver.execute_script(f"document.querySelector('.item_list').scrollBy(0, 225);");time.sleep(0.5)
                 print(f"{knu_village_name} - item_list_{item_index}\n{item_list_raw_data.text}")
-
-                return False
 
         # 매물 데이터 추출
         naver_data = []
@@ -211,17 +202,15 @@ def naver_capture(driver):
         select_action(naver_data, 1, delay = 3)
         
         while True:
-            time.sleep(0.5)
-            
-            try: 
+            item_element = driver.find_elements(By.XPATH, f'//*[@id="listContents1"]/div/div/div/div[{item_index}]')
+            if item_element:
                 select_action(naver_data, item_index)
                 item_index += 1
-            except: 
-                break
+            else:break
+
 
         df = pd.DataFrame(naver_data, columns=[
-            '매물 유형', '매물 제목', '소재지', '가격', '면적', '층수', '방향', 
-            '태그', '거래 방식', '중개 플랫폼', '중개사', '등록일'])
+            '매물 유형', '매물 제목', '소재지', '가격', '면적', '층수', '방향', '태그', '중개 플랫폼', '중개사', '등록일'])
         
         now = datetime.now()
         formatted_date_time = now.strftime("%Y-%m-%d-%H:%M")

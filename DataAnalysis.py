@@ -11,14 +11,18 @@
 import os
 import pandas as pd
 import numpy as np
-from datetime import datetime
+import math
+from datetime import datetime, timedelta
 import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from mpl_toolkits.mplot3d import Axes3D
 import plotly.express as px
+from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.statespace.sarimax import SARIMAX
 from matplotlib import rc
 rc('font', family='AppleGothic')
 plt.rcParams['axes.unicode_minus'] = False
@@ -35,10 +39,8 @@ rate_data = pd.read_csv('interest_rate_changes.csv')
 # 특정 기간의 실거래가를 분석하면 월별, 연도별 가격 변화를 확인
 
 # 이를 통해서
-#   1. 부동산 시장에서의 계절적 요인(성수기/비수기)이 존재하는지 확인 -> 1년씩 데이터를 뽑고 유사도 산정 후 계절과 연계
-#   2. 가격 상승 또는 하락이 주로 발생하는 시기를 파악 -> 위와 동일
-#   3. 과거 시세와 현재 시세를 비교하여 가격의 변동성을 분석 -> 
-#   4. 향후 몇 개월간의 가격 변화를 예측
+#   1. 부동산 시장에서의 계절적 요인(성수기/비수기)이 존재하는지 확인 -> SARIMA모델을 통한 시계열 분석으로 추세선 그리기
+#   2. 과거 시세와 현재 시세를 비교하여 가격의 변동성을 분석, 향후 몇 개월간의 가격 변화를 예측 -> Polynomial Regression을 통한 3차 다항 회귀 분석으로 추세선 그리기
 # ************************************************************************
 
 # molit_data의 모든 CSV 파일의 계약일을 YYYY-MM-DD 형식으로 변환하여 묶음. (연면적(㎡) 기준으로 30㎡ 이하와 30㎡ 초과 60㎡ 미만으로 분리)
@@ -249,8 +251,9 @@ def DataAnalysis_1C(converted_molit_data):
     plt.tight_layout()
     plt.show()
 
-
-def DataAnalysis_with_polynomial_trend_line(converted_molit_data, rate_data):
+# YYYY-MM 별 평균값 막대 그래프 ( 평균 면적당 월세 (만원/10㎡) - YYYY-MM )
+# Polynomial Regression을 적용하여 추세선 추가 ( 3차 다항 회귀 분석 )
+def DataAnalysis_1Aa(converted_molit_data, rate_data):
     # 날짜 변환 함수 (최신 기준금리를 기준으로 적용하기 위해 역순 정렬)
     rate_data['변경일자'] = pd.to_datetime(rate_data['변경일자'])
     rate_data = rate_data.sort_values(by='변경일자', ascending=False)
@@ -332,6 +335,122 @@ def DataAnalysis_with_polynomial_trend_line(converted_molit_data, rate_data):
     plt.show()
 
 
+def calculate_monthly_avg(converted_molit_data):
+    # 계약일을 datetime으로 변환
+    converted_molit_data['계약일'] = pd.to_datetime(converted_molit_data['계약일'], errors='coerce')
+
+    # 전세와 월세 데이터 분리
+    jeonse_data = converted_molit_data[(converted_molit_data['월세(만원)'] == 0) | (converted_molit_data['월세(만원)'].isna())]
+    wolse_data = converted_molit_data[converted_molit_data['월세(만원)'] > 0]
+
+    # 전세를 월세로 환산한 값 추가
+    jeonse_data['월세로 환산'] = jeonse_data.apply(lambda row: convert_to_monthly_rent(
+        float(row['보증금(만원)'].replace(",", "")), row['계약일']), axis=1)
+
+    # 면적당 월세 계산
+    jeonse_data['면적당 월세(전세환산)'] = jeonse_data['월세로 환산'] / jeonse_data['연면적(㎡)']
+    wolse_data['면적당 월세'] = wolse_data['월세(만원)'].astype(float) / wolse_data['연면적(㎡)']
+
+    # 계약일의 월 정보 추출
+    jeonse_data['계약월'] = jeonse_data['계약일'].dt.to_period('M')
+    wolse_data['계약월'] = wolse_data['계약일'].dt.to_period('M')
+
+    # 월별 평균 면적당 월세 계산
+    jeonse_monthly_avg = jeonse_data.groupby('계약월')['면적당 월세(전세환산)'].mean() * 10
+    wolse_monthly_avg = wolse_data.groupby('계약월')['면적당 월세'].mean() * 10
+
+    # 월별 평균 데이터를 DataFrame으로 변환
+    monthly_avg_df = pd.DataFrame({
+        '전세 환산 월별 평균 면적당 월세': jeonse_monthly_avg,
+        '실제 월세 월별 평균 면적당 월세': wolse_monthly_avg
+    }).dropna()  # NaN 값 제거
+    return monthly_avg_df
+
+def forecast_with_sarima(monthly_avg_df, forecast_period=12):
+    # 예측 대상 컬럼
+    columns_to_forecast = ['전세 환산 월별 평균 면적당 월세', '실제 월세 월별 평균 면적당 월세']
+    scaler = StandardScaler()
+    forecast_results = {}
+
+    # SARIMA 모델 파라미터 설정 (p, d, q) x (P, D, Q, s)
+    seasonal_order = (1, 1, 1, 12)  # 계절성 주기 12개월(1년)
+
+    # 각 컬럼에 대해 SARIMA 예측 수행
+    for column in columns_to_forecast:
+        # 시계열 데이터 설정 및 스케일링
+        ts_data = monthly_avg_df[column].values.reshape(-1, 1)
+        ts_data_scaled = scaler.fit_transform(ts_data).flatten()
+        
+        try:
+            # SARIMA 모델 피팅
+            model = SARIMAX(ts_data_scaled, order=(1, 1, 1), seasonal_order=seasonal_order)
+            model_fit = model.fit(disp=False)
+            
+            # 예측
+            forecast_scaled = model_fit.forecast(steps=forecast_period)
+            
+            # 예측치 역변환
+            forecast_original = scaler.inverse_transform(forecast_scaled.reshape(-1, 1)).flatten()
+            
+            # 예측 날짜 생성
+            last_date = monthly_avg_df.index[-1].to_timestamp()
+            forecast_dates = [last_date + timedelta(days=30 * i) for i in range(1, forecast_period + 1)]
+            forecast_results[column] = pd.Series(forecast_original, index=forecast_dates)
+            
+        except Exception as e:
+            print(f"Error forecasting {column}: {e}")
+            continue
+
+    # 시각화
+    fig, ax = plt.subplots(figsize=(12, 6))
+    colors = {'전세 환산 월별 평균 면적당 월세': 'tab:blue', '실제 월세 월별 평균 면적당 월세': 'tab:green'}
+
+    # 계절 구분선 추가 (각 계절에 맞는 색상으로 선만 추가)
+    start_year = min(monthly_avg_df.index.year.min(), 2013)
+    end_year = max(monthly_avg_df.index.year.max(), 2024 + math.ceil(forecast_period / 12))
+    seasons = {
+        '봄': (3, 5, 'lightpink'),        # 연한 핑크색
+        '여름': (6, 8, 'lightgreen'),     # 연한 초록색
+        '가을': (9, 11, '#E59171'),        # 단풍색
+        '겨울': (12, 2, 'lightblue')      # 연한 파란색
+    }
+    
+    for year in range(start_year, end_year + 1):
+        for season, (start_month, _, color) in seasons.items():  # 종료 월은 사용하지 않음
+            # 시작 월의 날짜 생성
+            start_date = pd.Timestamp(year=year, month=start_month, day=1)
+            
+            # 계절 시작 월에만 구분선 추가
+            ax.axvline(start_date, color=color, linestyle='--', linewidth=0.5)
+
+    # 실제 데이터와 예측 데이터 그리기
+    for column in columns_to_forecast:
+        # 실제 데이터
+        ax.plot(monthly_avg_df.index.to_timestamp(), monthly_avg_df[column], label=f'{column} (Actual)', marker='o', color=colors[column])
+        
+        # 예측 데이터
+        if column in forecast_results:
+            ax.plot(forecast_results[column].index, forecast_results[column], label=f'{column} (Forecast)',
+                    linestyle='--', marker='o', markerfacecolor='white', color=colors[column], markersize=4)
+            
+            # 실측치와 예측치의 첫 점을 이어주는 선 추가
+            ax.plot(
+                [monthly_avg_df.index[-1].to_timestamp(), forecast_results[column].index[0]],
+                [monthly_avg_df[column].iloc[-1], forecast_results[column].iloc[0]],
+                linestyle='--', color=colors[column], marker='o', markerfacecolor='white', markersize=4
+            )
+
+    # 그래프 설정
+    plt.xlabel('계약 연도')
+    plt.ylabel('평균 면적당 월세 (만원/10㎡)')
+    plt.title('월 평균 면적당 월세 예측 (전세 환산 및 실제 월세) - SARIMA 모델')
+    plt.legend()
+    plt.tight_layout()
+    
+    # x축 여백 설정
+    ax.set_xlim(left=monthly_avg_df.index[0].to_timestamp() - timedelta(days=60),
+                right=forecast_results[columns_to_forecast[0]].index[-1] + timedelta(days=60))
+    plt.show()
 
 
 if __name__ == "__main__":
@@ -340,11 +459,13 @@ if __name__ == "__main__":
     # 하나로 합친 데이터프레임
     combined_molit_df = pd.concat([converted_molit_df_1, converted_molit_df_2], axis=0, ignore_index=True)
 
-    DataAnalysis_with_polynomial_trend_line(combined_molit_df, rate_data)
+    DataAnalysis_1Aa(combined_molit_df, rate_data)
 
-    # DataAnalysis_1A(converted_molit_data_1, rate_data)
+    # 월별 평균 데이터 계산
+    # monthly_avg_df = calculate_monthly_avg(combined_molit_df)
 
-    # DataAnalysis_1C(converted_molit_data_1)
+    # SARIMA 예측 수행
+    # forecast_with_sarima(monthly_avg_df, forecast_period=18)
 
     pass
 

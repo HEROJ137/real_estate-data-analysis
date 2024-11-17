@@ -152,7 +152,7 @@ if __name__ == "__main__":
     output_dir = '/Users/jang-yeong-ung/Documents/real_estate-data-analysis/naver_data_updated'
 
     # Google Maps API 키 설정
-    api_key = 'AIzaSyCOEJgg0gN7M2ykiKVMUfFNeeZVSOWzDj0'  # 발급받은 Google Maps API 키를 입력하세요
+    api_key = ''  # 발급받은 Google Maps API 키를 입력하세요
     gmaps = googlemaps.Client(key=api_key)
 
     # 요청량 관리 파일 설정

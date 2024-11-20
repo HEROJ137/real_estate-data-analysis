@@ -72,25 +72,27 @@ def create_driver():
     driver.set_window_position(0, 0)
     return driver
 
-knu = {"강원특별자치도" : {"춘천시" : ["효자동", "후평동", "석사동", "퇴계동"]}}
+knu = {"강원특별자치도": {"춘천시": ["효자동", "후평동", "석사동", "퇴계동"]}}
 
+# 국토교통부 실거래 데이터를 크롤링하고 CSV 파일로 저장하는 함수
 def molit_capture(driver, year):
-    # CSV 파일을 저장할 디렉토리 경로 설정
+    # 데이터를 저장할 디렉토리 경로 설정
     directory = 'molit_data'
 
-    # 디렉토리가 존재하지 않으면 생성
-    if not os.path.exists(directory):os.makedirs(directory)
+    # 디렉토리가 존재하지 않으면 새로 생성
+    if not os.path.exists(directory): os.makedirs(directory)
 
-    # 국토교통부 실거래가 - 단독/다가구 건물 데이터 url 접속
+    # 국토교통부 실거래가 시스템 URL로 접속
     driver.get("https://rt.molit.go.kr/pt/gis/gis.do?srhThingSecd=C&mobileAt=")
-    driver.implicitly_wait(5);time.sleep(1)
+    driver.implicitly_wait(5)  # 페이지 로딩을 대기
+    time.sleep(1)  # 안정적인 동작을 위해 추가 대기
 
-    # 기준연도 선택 버튼 클릭
+    # 기준 연도 선택 버튼 클릭
     WebDriverWait(driver, 5).until(
         EC.element_to_be_clickable((By.XPATH, f'//*[@id="yearBtn"]'))
-    ).click()
-    
-    # 기준연도 선택창에서 year 선택
+    ).click();time.sleep(0.1)  # 안정적인 동작을 위해 추가 대기
+
+    # 기준 연도 선택 (입력받은 year를 기준으로 선택)
     year_element = WebDriverWait(driver, 5).until(
         EC.presence_of_element_located((By.XPATH, f'/html/body/div/section/div[1]/div[2]/div[1]/div[1]/div[1]/div[2]/select'))
     );time.sleep(0.1)
@@ -101,7 +103,6 @@ def molit_capture(driver, year):
         EC.element_to_be_clickable((By.XPATH, f'//*[@id="pnuBtn"]'))
     ).click();time.sleep(0.1)
 
-    # 강원특별자치도 - 춘천시 선택
     # 시도명 선택 (강원특별자치도)
     city_element = WebDriverWait(driver, 5).until(
         EC.presence_of_element_located((By.XPATH, '/html/body/div/section/div[1]/div[2]/div[1]/div[1]/div[3]/div[2]/select'))
@@ -114,19 +115,20 @@ def molit_capture(driver, year):
     );time.sleep(0.1)
     Select(county_element).select_by_visible_text("춘천시");time.sleep(0.1)
 
-    # 읍면동명 선택 (효자동, 후평동, 석사동, 퇴계동)
+    # 읍면동명 선택 (효자동, 후평동, 석사동, 퇴계동 반복)
     for knu_village in knu["강원특별자치도"]["춘천시"]:
+        # 각 읍면동명을 선택
         village_element = WebDriverWait(driver, 5).until(
             EC.presence_of_element_located((By.XPATH, '/html/body/div/section/div[1]/div[2]/div[1]/div[1]/div[3]/div[4]/div/select'))
         );time.sleep(0.1)
         Select(village_element).select_by_visible_text(knu_village);time.sleep(0.1)
 
-        # 돋보기 버튼 클릭
+        # 돋보기 버튼 클릭 (데이터 검색 시작)
         WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.XPATH, f'/html/body/div/section/div[1]/div[2]/div[1]/div[1]/ul/li[5]/div'))
         ).click();time.sleep(2)
 
-        # 전월세 버튼 클릭 
+        # 전월세 버튼 클릭 (전월세 데이터 필터링)
         WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.XPATH, f'/html/body/div/section/div[1]/div[2]/div[2]/div[1]/div[2]/div[1]/button[2]'))
         ).click();time.sleep(2)
@@ -137,54 +139,62 @@ def molit_capture(driver, year):
         );time.sleep(0.1)
         Select(area_element).select_by_visible_text('60제곱미터 이하');time.sleep(2)
 
-        # 해당 연도에서 면적이 '60제곱미터 이하'인 데이터가 들어있는 달 구하기
+        # 해당 연도의 데이터를 포함한 월 목록 가져오기
         month_element = WebDriverWait(driver, 5).until(
             EC.presence_of_element_located((By.XPATH, '/html/body/div/section/div[1]/div[2]/div[2]/div[2]/table/tbody/tr[2]/td[3]/div/select'))
         );time.sleep(2)
+
         month_select = Select(month_element)
         month_all_options = month_select.options
         month_list = [month_option.text for month_option in month_all_options if month_option.text != '전체']
 
+        # 월별 데이터 반복 수집
         for month in month_list:
             month_element = WebDriverWait(driver, 5).until(
                 EC.presence_of_element_located((By.XPATH, '/html/body/div/section/div[1]/div[2]/div[2]/div[2]/table/tbody/tr[2]/td[3]/div/select'))
             );time.sleep(0.1)
             Select(month_element).select_by_visible_text(month);time.sleep(2)
 
+            # 데이터 HTML 가져오기
             raw_data = WebDriverWait(driver, 30).until(
                 EC.presence_of_element_located((By.XPATH, "/html/body/div/section/div[1]/div[2]/div[2]/div[3]/div"))
             );time.sleep(2)
+
             raw_content = raw_data.get_attribute('outerHTML')
             soup = BeautifulSoup(raw_content, 'lxml')
+
+            # HTML 데이터를 테이블 형태로 파싱
             rows = soup.find_all('tr')
             table_data = []
             row_buffer = None
             for row in rows:
                 cols = row.find_all('td')
                 cols = [col.text.strip() for col in cols]
-                if len(cols) == 9:
-                    row_buffer = cols
-                elif len(cols) == 5:
+                if len(cols) == 9: row_buffer = cols    # 첫 번째 줄 데이터 저장
+                elif len(cols) == 5:    # 두 번째 줄과 결합하여 완전한 데이터로 저장
                     complete_row = [
-                        row_buffer[0], row_buffer[1], cols[0], row_buffer[2], row_buffer[3], cols[1], month+'/'+row_buffer[4], 
-                        row_buffer[5], cols[2], row_buffer[6], cols[3], row_buffer[7], cols[4], row_buffer[8]]
+                        row_buffer[0], row_buffer[1], cols[0], row_buffer[2], row_buffer[3], cols[1], month + '/' + row_buffer[4],
+                        row_buffer[5], cols[2], row_buffer[6], cols[3], row_buffer[7], cols[4], row_buffer[8]
+                    ]
                     table_data.append(complete_row)
                     row_buffer = None
 
+            # DataFrame으로 변환
             df = pd.DataFrame(table_data, columns=[
-                '법정동', '지번', '도로명', '주택유형', '연면적(㎡)', '계약구분', '계약일', 
+                '법정동', '지번', '도로명', '주택유형', '연면적(㎡)', '계약구분', '계약일',
                 '계약기간', '갱신요구권사용', '보증금(만원)', '월세(만원)', '종전보증금(만원)', '종전월세(만원)', '전산공부'])
 
+            # CSV 파일로 저장
             file_path = os.path.join(directory, f'{year}-{month}-{knu_village}.csv')
             df.to_csv(file_path, index=False)
             print(f'파일이 {file_path}에 저장되었습니다.')
 
-        # 닫기 버튼 클릭 
+        # 데이터 창 닫기
         WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.XPATH, f'/html/body/div/section/div[1]/div[2]/div[2]/div[1]/div[1]/a'))
         ).click();time.sleep(0.1)
 
-        # 주소 선택 버튼 클릭
+        # 다시 주소 선택 버튼 클릭 (다음 읍면동 데이터 수집 준비)
         WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.XPATH, f'//*[@id="pnuBtn"]'))
         ).click();time.sleep(0.1)

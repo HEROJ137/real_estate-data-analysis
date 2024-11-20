@@ -137,7 +137,8 @@ for rent_type, color in [('월세', 'green'), ('전세 환산', 'blue')]:
 
 # 강원대 한빛관 위치 강조
 center_x, center_y = gpd.GeoSeries.from_xy([hanbit_lon], [hanbit_lat], crs="EPSG:4326").to_crs(epsg=3857).geometry[0].x, \
-                     gpd.GeoSeries.from_xy([hanbit_lon], [hanbit_lat], crs="EPSG:4326").to_crs(epsg=3857).geometry[0].y
+                     gpd.GeoSeries.from_xy([hanbit_lon], [hanbit_lat], crs="EPSG:4326").to_crs(epsg=3857).geometry[0].y 
+
 ax.scatter(center_x, center_y, color='red', alpha=0.5, label='강원대 한빛관', s=150)
 
 # 폰트 크기 설정

@@ -282,8 +282,73 @@ def DataAnalysis_1C(converted_molit_data):
     plt.tight_layout()
     plt.show()
 
+# YYYY-MM 별 꺽은선 그래프 그래프 ( 평균 면적당 월세 (만원/10㎡) - YYYY-MM )
+def DataAnalysis_1D(converted_molit_data, rate_data):
+    # 날짜 변환 함수 (최신 기준금리를 기준으로 적용하기 위해 역순 정렬)
+    rate_data['변경일자'] = pd.to_datetime(rate_data['변경일자'])
+    rate_data = rate_data.sort_values(by='변경일자', ascending=False)
 
-# YYYY-MM 별 평균값 막대 그래프 ( 평균 면적당 월세 (만원/10㎡) - YYYY-MM )
+    # 계약일을 datetime으로 변환
+    converted_molit_data['계약일'] = pd.to_datetime(converted_molit_data['계약일'], errors='coerce')
+
+    # 전세와 월세 데이터 분리
+    jeonse_data = converted_molit_data[(converted_molit_data['월세(만원)'] == 0) | (converted_molit_data['월세(만원)'].isna())]
+    wolse_data = converted_molit_data[converted_molit_data['월세(만원)'] > 0]
+
+    # 전세를 월세로 환산한 값 추가
+    jeonse_data['월세로 환산'] = jeonse_data.apply(lambda row: convert_to_monthly_rent(
+        float(row['보증금(만원)'].replace(",", "")), row['계약일']), axis=1)
+
+    # 면적당 월세 계산
+    jeonse_data['면적당 월세(전세환산)'] = jeonse_data['월세로 환산'] / jeonse_data['연면적(㎡)']
+    wolse_data['면적당 월세'] = wolse_data['월세(만원)'].astype(float) / wolse_data['연면적(㎡)']
+
+    # 계약일의 월 정보 추출
+    jeonse_data['계약월'] = jeonse_data['계약일'].dt.to_period('M')
+    wolse_data['계약월'] = wolse_data['계약일'].dt.to_period('M')
+
+    # 월별 평균 면적당 월세 계산
+    jeonse_monthly_avg = jeonse_data.groupby('계약월')['면적당 월세(전세환산)'].mean() * 10
+    wolse_monthly_avg = wolse_data.groupby('계약월')['면적당 월세'].mean() * 10
+
+    # 월별 평균 데이터를 DataFrame으로 변환
+    monthly_avg_df = pd.DataFrame({
+        '전세 환산 월별 평균 면적당 월세': jeonse_monthly_avg,
+        '실제 월세 월별 평균 면적당 월세': wolse_monthly_avg
+    })
+
+    # NaN 값 제거 (필요할 경우)
+    monthly_avg_df = monthly_avg_df.dropna()
+
+    # x축 범위를 계약월 최솟값과 최댓값으로 설정, 매년 1월만 표시
+    min_date = monthly_avg_df.index.min().to_timestamp()
+    max_date = monthly_avg_df.index.max().to_timestamp()
+    date_range = pd.date_range(start=min_date, end=max_date, freq='AS')  # 매년 1월만 표시
+    date_range_with_margin = pd.date_range(start=min_date - pd.DateOffset(months=3), 
+                                           end=max_date + pd.DateOffset(months=6), freq='MS')  # 여백 추가
+
+    # 시각화
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    # 실제 데이터 플롯
+    ax.plot(monthly_avg_df.index.to_timestamp(), monthly_avg_df['전세 환산 월별 평균 면적당 월세'], label='전세 환산 월별 평균 면적당 월세', marker='o', alpha=0.6)
+    ax.plot(monthly_avg_df.index.to_timestamp(), monthly_avg_df['실제 월세 월별 평균 면적당 월세'], label='실제 월세 월별 평균 면적당 월세', marker='o', alpha=0.6)
+
+    # 그래프 설정
+    plt.xlabel('계약 연도')
+    plt.ylabel('평균 면적당 월세 (만원/10㎡)')
+    plt.title('월 평균 면적당 월세 추이 (전세 환산 및 실제 월세)')
+    plt.legend()
+
+    # x축 설정: 매년 1월 표시 및 여백 추가
+    ax.set_xlim(date_range_with_margin[0], date_range_with_margin[-1])
+    ax.set_xticks(date_range)
+    ax.set_xticklabels(date_range.strftime('%Y-%m'), rotation=0)
+
+    plt.tight_layout()
+    plt.show()
+
+# YYYY-MM 별 꺽은선 그래프 그래프 ( 평균 면적당 월세 (만원/10㎡) - YYYY-MM )
 # Polynomial Regression을 적용하여 추세선 추가 ( 3차 다항 회귀 분석 )
 def DataAnalysis_1Aa(converted_molit_data, rate_data):
     # 날짜 변환 함수 (최신 기준금리를 기준으로 적용하기 위해 역순 정렬)
@@ -463,11 +528,11 @@ if __name__ == "__main__":
     combined_molit_df = pd.concat([converted_molit_df_1, converted_molit_df_2], axis=0, ignore_index=True)
 
     # Polynomial Regression을 적용하여 추세선 추가 ( 3차 다항 회귀 분석 )
-    DataAnalysis_1Aa(combined_molit_df, rate_data)
+    DataAnalysis_1D(combined_molit_df, rate_data)
 
     # 월별 평균 데이터 계산
-    monthly_avg_df = calculate_monthly_avg(combined_molit_df)
+    #monthly_avg_df = calculate_monthly_avg(combined_molit_df)
 
     # SARIMA 예측 수행
-    DataAnalysis_1Ab(monthly_avg_df, forecast_period=18)
+    #DataAnalysis_1Ab(monthly_avg_df, forecast_period=18)
 

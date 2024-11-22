@@ -128,7 +128,10 @@ result_df = result_df.drop_duplicates()
 
 # 전세 환산과 월세를 분리
 jeonse_df = result_df[result_df['월세 유형'] == '전세 환산']
+jeonse_df = jeonse_df.drop_duplicates()
+
 wolse_df = result_df[result_df['월세 유형'] == '월세']
+wolse_df = wolse_df.drop_duplicates()
 
 # 결과 시각화 및 추세선 추가
 plt.figure(figsize=(12, 6))
@@ -138,12 +141,12 @@ def normalize(series, scale):
     return (series - series.min()) / (series.max() - series.min()) * scale
 
 jeonse_sizes = normalize(jeonse_df['전용면적'], scale=150)
-plt.scatter(jeonse_df['거리'], jeonse_df['10m²당 월세'], s=jeonse_sizes, label='전세 환산', alpha=0.05, color='blue')
+plt.scatter(jeonse_df['거리'], jeonse_df['10m²당 월세'], s=jeonse_sizes, label='전세 환산', alpha=0.1, color='blue')
 
 wolse_sizes = normalize(wolse_df['전용면적'], scale=150)
-plt.scatter(wolse_df['거리'], wolse_df['10m²당 월세'], s=wolse_sizes, label='월세', alpha=0.05, color='green')
+plt.scatter(wolse_df['거리'], wolse_df['10m²당 월세'], s=wolse_sizes, label='월세', alpha=0.1, color='green')
 
-# 전세 데이터 추세선
+"""# 전세 데이터 추세선
 jeonse_df_clean = jeonse_df.dropna(subset=['거리', '10m²당 월세'])
 jeonse_df_clean = jeonse_df_clean[
     ~np.isinf(jeonse_df_clean['거리']) & ~np.isinf(jeonse_df_clean['10m²당 월세'])
@@ -169,11 +172,11 @@ if len(wolse_df_clean) > 2:
     x_wolse = np.linspace(wolse_df_clean['거리'].min(), wolse_df_clean['거리'].max(), 100)
     plt.plot(x_wolse, p_wolse(x_wolse), linestyle='--', color='green', linewidth=2.5, label='월세 추세선')
 else:
-    print("월세 데이터가 부족하여 추세선을 생성할 수 없습니다.")
+    print("월세 데이터가 부족하여 추세선을 생성할 수 없습니다.")"""
 
 # 그래프 제목 및 축 레이블 설정
-plt.title('강원대 한빛관 거리와 10m²당 월세 산점도', fontsize=12)
-plt.xlabel('강원대 한빛관 거리 (km)', fontsize=10)
+plt.title('강원대까지 거리 - 면적당 월세', fontsize=12)
+plt.xlabel('강원대까지 거리 (km)', fontsize=10)
 plt.ylabel('10m²당 월세 (만원)', fontsize=10)
 plt.legend()
 plt.grid(True)

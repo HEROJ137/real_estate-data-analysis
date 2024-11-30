@@ -77,7 +77,7 @@ knu = {"강원특별자치도": {"춘천시": ["효자동", "후평동", "석사
 # 국토교통부 실거래 데이터를 크롤링하고 CSV 파일로 저장하는 함수
 def molit_capture(driver, year):
     # 데이터를 저장할 디렉토리 경로 설정
-    directory = 'molit_data'
+    directory = 'molit_data-2'
 
     # 디렉토리가 존재하지 않으면 새로 생성
     if not os.path.exists(directory): os.makedirs(directory)
@@ -126,23 +126,17 @@ def molit_capture(driver, year):
         # 돋보기 버튼 클릭 (데이터 검색 시작)
         WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.XPATH, f'/html/body/div/section/div[1]/div[2]/div[1]/div[1]/ul/li[5]/div'))
-        ).click();time.sleep(2)
+        ).click();time.sleep(1)
 
         # 전월세 버튼 클릭 (전월세 데이터 필터링)
         WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.XPATH, f'/html/body/div/section/div[1]/div[2]/div[2]/div[1]/div[2]/div[1]/button[2]'))
-        ).click();time.sleep(2)
-
-        # 면적에서 '60제곱미터 이하' 선택
-        area_element = WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.XPATH, '/html/body/div/section/div[1]/div[2]/div[2]/div[2]/table/tbody/tr[2]/td[4]/div/select'))
-        );time.sleep(0.1)
-        Select(area_element).select_by_visible_text('60제곱미터 이하');time.sleep(2)
+        ).click();time.sleep(1)
 
         # 해당 연도의 데이터를 포함한 월 목록 가져오기
         month_element = WebDriverWait(driver, 5).until(
             EC.presence_of_element_located((By.XPATH, '/html/body/div/section/div[1]/div[2]/div[2]/div[2]/table/tbody/tr[2]/td[3]/div/select'))
-        );time.sleep(2)
+        );time.sleep(1)
 
         month_select = Select(month_element)
         month_all_options = month_select.options
@@ -152,8 +146,14 @@ def molit_capture(driver, year):
         for month in month_list:
             month_element = WebDriverWait(driver, 5).until(
                 EC.presence_of_element_located((By.XPATH, '/html/body/div/section/div[1]/div[2]/div[2]/div[2]/table/tbody/tr[2]/td[3]/div/select'))
-            );time.sleep(0.1)
-            Select(month_element).select_by_visible_text(month);time.sleep(2)
+            );time.sleep(0.5)
+            Select(month_element).select_by_visible_text(month);time.sleep(0.5)
+
+            # 면적에서 '60제곱미터 이하' 선택
+            area_element = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.XPATH, '/html/body/div/section/div[1]/div[2]/div[2]/div[2]/table/tbody/tr[2]/td[4]/div/select'))
+            );time.sleep(0.5)
+            Select(area_element).select_by_visible_text('60제곱미터 이하');time.sleep(0.5)
 
             # 데이터 HTML 가져오기
             raw_data = WebDriverWait(driver, 30).until(
@@ -189,6 +189,8 @@ def molit_capture(driver, year):
             df.to_csv(file_path, index=False)
             print(f'파일이 {file_path}에 저장되었습니다.')
 
+        print()
+
         # 데이터 창 닫기
         WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.XPATH, f'/html/body/div/section/div[1]/div[2]/div[2]/div[1]/div[1]/a'))
@@ -208,5 +210,5 @@ def main():
     # WebDriver 종료
     driver.quit()
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": main()
+

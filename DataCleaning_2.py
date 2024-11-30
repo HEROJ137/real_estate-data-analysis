@@ -14,7 +14,7 @@ def clean_csv_files(directory_path):
             df = pd.read_csv(file_path)
             
             # '중개 플랫폼', '중개사', '등록일' 열 삭제
-            df = df.drop(columns=['중개 플랫폼', '중개사', '등록일'], errors='ignore')
+            df = df.drop(columns=['태그'], errors='ignore')
             
             # 수정된 데이터 저장 (덮어쓰기)
             df.to_csv(file_path, index=False, encoding='utf-8-sig')  # UTF-8로 인코딩 문제 방지
@@ -147,19 +147,4 @@ def process_single_file(file_path):
     print(f"파일 처리 완료. 결과 저장 위치: {output_file_path}")
 
 if __name__ == "__main__":
-    # 디렉토리 설정
-    input_dir = '/Users/jang-yeong-ung/Documents/real_estate-data-analysis/naver_data'
-    output_dir = '/Users/jang-yeong-ung/Documents/real_estate-data-analysis/naver_data_updated'
-
-    # Google Maps API 키 설정
-    api_key = ''  # 발급받은 Google Maps API 키를 입력하세요
-    gmaps = googlemaps.Client(key=api_key)
-
-    # 요청량 관리 파일 설정
-    usage_file = 'daily_usage.json'
-    DAILY_LIMIT = 3
-    000  # 하루 최대 요청 수
-    REQUEST_DELAY = 1   # 요청 간 대기 시간 (초)
-
-    # 모든 파일 처리 실행
-    process_all_files(input_dir, output_dir)
+    clean_csv_files("/Users/jang-yeong-ung/Documents/real_estate-data-analysis/naver_data_updated")

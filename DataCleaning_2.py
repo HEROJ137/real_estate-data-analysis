@@ -4,6 +4,9 @@ import time
 import json
 import os
 
+input_dir = '/Users/jang-yeong-ung/Documents/real_estate-data-analysis/naver_data'
+output_dir = '/Users/jang-yeong-ung/Documents/real_estate-data-analysis/naver_data_updated'
+
 # 지정된 디렉토리 안의 모든 CSV 파일에서 '중개 플랫폼', '중개사', '등록일' 열을 제거하고 저장.
 def clean_csv_files(directory_path):
     for filename in os.listdir(directory_path):
@@ -147,4 +150,16 @@ def process_single_file(file_path):
     print(f"파일 처리 완료. 결과 저장 위치: {output_file_path}")
 
 if __name__ == "__main__":
-    clean_csv_files("/Users/jang-yeong-ung/Documents/real_estate-data-analysis/naver_data_updated")
+    api_key = ''  # 발급받은 Google Maps API 키를 입력하세요
+    gmaps = googlemaps.Client(key=api_key)
+
+    # 요청량 관리 파일 설정
+    usage_file = 'daily_usage.json'
+    DAILY_LIMIT = 3000  # 하루 최대 요청 수
+    REQUEST_DELAY = 1   # 요청 간 대기 시간 (초)
+
+    # 모든 파일 처리 실행
+    process_all_files(input_dir, output_dir)
+
+
+    

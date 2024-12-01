@@ -140,25 +140,11 @@ plt.figure(figsize=(12, 6))
 def normalize(series, scale):
     return (series - series.min()) / (series.max() - series.min()) * scale
 
-jeonse_sizes = normalize(jeonse_df['전용면적'], scale=150)
-plt.scatter(jeonse_df['거리'], jeonse_df['10m²당 월세'], s=jeonse_sizes, label='전세 환산', alpha=0.1, color='blue')
-
 wolse_sizes = normalize(wolse_df['전용면적'], scale=150)
 plt.scatter(wolse_df['거리'], wolse_df['10m²당 월세'], s=wolse_sizes, label='월세', alpha=0.1, color='green')
 
-"""# 전세 데이터 추세선
-jeonse_df_clean = jeonse_df.dropna(subset=['거리', '10m²당 월세'])
-jeonse_df_clean = jeonse_df_clean[
-    ~np.isinf(jeonse_df_clean['거리']) & ~np.isinf(jeonse_df_clean['10m²당 월세'])
-]
-
-if len(jeonse_df_clean) > 2:
-    z_jeonse = np.polyfit(jeonse_df_clean['거리'], jeonse_df_clean['10m²당 월세'], 2)
-    p_jeonse = np.poly1d(z_jeonse)
-    x_jeonse = np.linspace(jeonse_df_clean['거리'].min(), jeonse_df_clean['거리'].max(), 100)
-    plt.plot(x_jeonse, p_jeonse(x_jeonse), linestyle='--', color='blue', linewidth=2.5, label='전세 추세선')
-else:
-    print("전세 데이터가 부족하여 추세선을 생성할 수 없습니다.")
+jeonse_sizes = normalize(jeonse_df['전용면적'], scale=150)
+plt.scatter(jeonse_df['거리'], jeonse_df['10m²당 월세'], s=jeonse_sizes, label='전세 환산', alpha=0.1, color='blue')
 
 # 월세 데이터 추세선
 wolse_df_clean = wolse_df.dropna(subset=['거리', '10m²당 월세'])
@@ -172,7 +158,21 @@ if len(wolse_df_clean) > 2:
     x_wolse = np.linspace(wolse_df_clean['거리'].min(), wolse_df_clean['거리'].max(), 100)
     plt.plot(x_wolse, p_wolse(x_wolse), linestyle='--', color='green', linewidth=2.5, label='월세 추세선')
 else:
-    print("월세 데이터가 부족하여 추세선을 생성할 수 없습니다.")"""
+    print("월세 데이터가 부족하여 추세선을 생성할 수 없습니다.")
+    
+# 전세 데이터 추세선
+jeonse_df_clean = jeonse_df.dropna(subset=['거리', '10m²당 월세'])
+jeonse_df_clean = jeonse_df_clean[
+    ~np.isinf(jeonse_df_clean['거리']) & ~np.isinf(jeonse_df_clean['10m²당 월세'])
+]
+
+if len(jeonse_df_clean) > 2:
+    z_jeonse = np.polyfit(jeonse_df_clean['거리'], jeonse_df_clean['10m²당 월세'], 2)
+    p_jeonse = np.poly1d(z_jeonse)
+    x_jeonse = np.linspace(jeonse_df_clean['거리'].min(), jeonse_df_clean['거리'].max(), 100)
+    plt.plot(x_jeonse, p_jeonse(x_jeonse), linestyle='--', color='blue', linewidth=2.5, label='전세 추세선')
+else:
+    print("전세 데이터가 부족하여 추세선을 생성할 수 없습니다.")
 
 # 그래프 제목 및 축 레이블 설정
 plt.title('강원대까지 거리 - 면적당 월세', fontsize=12)
@@ -183,3 +183,17 @@ plt.grid(True)
 
 # 그래프 보여주기
 plt.show()
+
+# 전세 데이터 추세선 다항함수식
+if len(jeonse_df_clean) > 2:
+    jeonse_equation = np.poly1d(z_jeonse)
+    jeonse_coeffs = [f"{coeff:.6f}" for coeff in jeonse_equation.coefficients]
+    jeonse_equation_str = " + ".join([f"{coeff}x^{i}" for i, coeff in enumerate(reversed(jeonse_coeffs))])
+    print(f"전세 추세선 다항함수식: y = {jeonse_equation_str}")
+
+# 월세 데이터 추세선 다항함수식
+if len(wolse_df_clean) > 2:
+    wolse_equation = np.poly1d(z_wolse)
+    wolse_coeffs = [f"{coeff:.6f}" for coeff in wolse_equation.coefficients]
+    wolse_equation_str = " + ".join([f"{coeff}x^{i}" for i, coeff in enumerate(reversed(wolse_coeffs))])
+    print(f"월세 추세선 다항함수식: y = {wolse_equation_str}")

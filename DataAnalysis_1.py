@@ -172,7 +172,6 @@ def DataAnalysis_1A(converted_molit_data, rate_data):
     
     plt.show()
 
-
 # YYYY-MM 별 박스플롯 그래프 ( 면적당 월세 (만원/10㎡) - YYYY-MM )
 def DataAnalysis_1B(converted_molit_data, rate_data):
     # 날짜 변환 함수 (최신 기준금리를 기준으로 적용하기 위해 역순 정렬)
@@ -239,7 +238,6 @@ def DataAnalysis_1B(converted_molit_data, rate_data):
     plt.xlim(-1, len(wolse_labels) + 2)
     plt.tight_layout()
     plt.show()
-
 
 # MM 별 박스플롯 그래프 ( 면적당 월세 (만원/10㎡) - MM )
 def DataAnalysis_1C(converted_molit_data):
@@ -348,6 +346,52 @@ def DataAnalysis_1D(converted_molit_data, rate_data):
     plt.tight_layout()
     plt.show()
 
+# YYYY-MM 별 매물 갯수 그래프 ( 매물 갯수 - YYYY-MM )
+def DataAnalysis_1E(converted_molit_data, rate_data):
+    # 날짜 변환 함수 (최신 기준금리를 기준으로 적용하기 위해 역순 정렬)
+    rate_data['변경일자'] = pd.to_datetime(rate_data['변경일자'])
+    rate_data = rate_data.sort_values(by='변경일자', ascending=False)
+
+    # 계약일을 datetime으로 변환
+    converted_molit_data['계약일'] = pd.to_datetime(converted_molit_data['계약일'], errors='coerce')
+
+    # 전세와 월세 데이터 분리
+    jeonse_data = converted_molit_data[(converted_molit_data['월세(만원)'] == 0) | (converted_molit_data['월세(만원)'].isna())]
+    wolse_data = converted_molit_data[converted_molit_data['월세(만원)'] > 0]
+
+    # 계약일의 월 정보 추출
+    jeonse_data['계약월'] = jeonse_data['계약일'].dt.to_period('M')
+    wolse_data['계약월'] = wolse_data['계약일'].dt.to_period('M')
+
+    # 월별 매물 갯수 계산
+    jeonse_monthly_count = jeonse_data.groupby('계약월').size()
+    wolse_monthly_count = wolse_data.groupby('계약월').size()
+
+    # 월별 매물 갯수를 DataFrame으로 변환
+    monthly_count_df = pd.DataFrame({
+        '전세 매물 갯수': jeonse_monthly_count,
+        '월세 매물 갯수': wolse_monthly_count
+    })
+
+    # NaN 값 제거 (필요할 경우)
+    monthly_count_df = monthly_count_df.dropna()
+
+    # 시각화
+    ax = monthly_count_df.plot.bar(figsize=(12, 6), alpha=0.6)
+
+    # 그래프 설정
+    plt.xlabel('계약 연도')
+    plt.ylabel('매물 갯수')
+    plt.title('월별 매물 갯수 추이 (전세 및 월세)')
+    plt.legend()
+    
+    # x축을 연도별로 표시
+    ax.set_xticks(range(0, len(monthly_count_df.index), 12))  # 매년 첫 달에 해당하는 인덱스만 표시
+    ax.set_xticklabels([date.year for date in monthly_count_df.index[::12]], rotation=0)  # 연도만 표시하고 회전 없이 설정
+    
+    plt.show()
+
+
 # YYYY-MM 별 꺽은선 그래프 그래프 ( 평균 면적당 월세 (만원/10㎡) - YYYY-MM )
 # Polynomial Regression을 적용하여 추세선 추가 ( 3차 다항 회귀 분석 )
 def DataAnalysis_1Aa(converted_molit_data, rate_data):
@@ -416,6 +460,19 @@ def DataAnalysis_1Aa(converted_molit_data, rate_data):
 
         # 곡선형 추세선 그리기
         ax.plot(date_range_with_margin, trend_line, linestyle='--', label=f'{column} Polynomial Trend Line')
+
+        coefficients = model.coef_
+        intercept = model.intercept_
+
+        polynomial_expression = " + ".join([
+            f"{coeff:.10f}x^{i}" if abs(coeff) > 1e-10 else ""  # 더 작은 임계값 설정
+            for i, coeff in enumerate(coefficients)
+        ])
+
+        # 절편 포함 다항식 표현
+        polynomial_expression = f"{intercept:.10f}" + (" + " + polynomial_expression if polynomial_expression else "")
+
+        print(f"Polynomial Trend Line Equation: y = {polynomial_expression}")
 
     # 그래프 설정
     plt.xlabel('계약 연도')
@@ -521,14 +578,37 @@ def DataAnalysis_1Ab(monthly_avg_df, forecast_period=12):
     plt.show()
 
 
+def InterestRateChangeGraph(rate_date):
+    df = rate_date
+
+    # 날짜 형식 변환 및 정렬
+    df['변경일자'] = pd.to_datetime(df['변경일자'])
+    df = df.sort_values(by='변경일자')
+
+    # 막대 그래프 (막대 두께 조정)
+    plt.figure(figsize=(12, 6))
+    plt.bar(df['변경일자'], df['기준금리'], color='skyblue', alpha=1, width=35, zorder=3)  # 막대 두께 조정
+    plt.xlabel('변경일자')
+    plt.ylabel('기준금리 (%)')
+    plt.title('기준금리 변화 추이')
+    plt.xticks(rotation=0)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.show()
+
+
 if __name__ == "__main__":
     # molit_data의 모든 CSV 파일을 두개의 데이터프레임으로 나눠서 변환 (연면적(㎡) 기준으로 30㎡ 이하와 30㎡ 초과 60㎡ 미만으로 분리)
     converted_molit_df_1, converted_molit_df_2 = load_and_adjust_molit_data(molit_data_dir)
     # 하나로 합친 데이터프레임
     combined_molit_df = pd.concat([converted_molit_df_1, converted_molit_df_2], axis=0, ignore_index=True)
 
+    #InterestRateChangeGraph(pd.read_csv('interest_rate_changes.csv'))
+
+    DataAnalysis_1E(combined_molit_df, rate_data)
+    
     # Polynomial Regression을 적용하여 추세선 추가 ( 3차 다항 회귀 분석 )
-    DataAnalysis_1D(combined_molit_df, rate_data)
+    # DataAnalysis_1Aa(combined_molit_df, rate_data)
 
     # 월별 평균 데이터 계산
     #monthly_avg_df = calculate_monthly_avg(combined_molit_df)
